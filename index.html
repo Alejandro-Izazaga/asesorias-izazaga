@@ -134,6 +134,18 @@
         .opt:has(input:checked){border-color:#38bdf8;background:rgba(56,189,248,.12);color:#fff}
         .opt input{accent-color:#38bdf8}
 
+        .field,.folio-input{box-sizing:border-box;max-width:100%}
+
+        /* Catálogo en menús desplegables */
+        .chev-t{transition:transform .2s}
+        .rot-90{transform:rotate(90deg)}
+        .rot-180{transform:rotate(180deg)}
+        .grupo > h4 button:focus-visible{outline-offset:-3px}
+        body.has-bar{padding-bottom:6rem}
+        #toast{position:fixed;left:50%;bottom:6.5rem;transform:translateX(-50%);max-width:min(92vw,28rem);z-index:70;background:#131e3a;border:1px solid #1e2d54;color:#fff;font-size:.85rem;padding:.7rem 1rem;border-radius:.85rem;box-shadow:0 14px 34px -10px rgba(0,0,0,.7)}
+        #toast.ok{border-color:rgba(52,211,153,.6)}
+        #toast.error{border-color:rgba(251,113,133,.6)}
+
         /* Portal */
         .folio-input{background:#0b1329;border:1px solid #1e2d54;color:#fff;border-radius:.85rem;padding:.95rem 1.1rem;font-size:1.05rem;letter-spacing:.12em;text-transform:uppercase;width:100%;font-family:'Outfit',sans-serif;font-weight:600}
         .folio-input::placeholder{color:#5c6b86;letter-spacing:.12em}
@@ -461,20 +473,15 @@
                             <button type="button" class="chip" data-v="mat" aria-pressed="false">Matemáticas</button>
                             <button type="button" class="chip" data-v="fis" aria-pressed="false">Física</button>
                         </div>
-                        <div id="f-nivel" class="flex flex-wrap items-center justify-center gap-2" role="group" aria-label="Filtrar por nivel">
-                            <button type="button" class="chip" data-v="todos" aria-pressed="true">Todos los niveles</button>
-                            <button type="button" class="chip" data-v="sec" aria-pressed="false">Secundaria</button>
-                            <button type="button" class="chip" data-v="bach" aria-pressed="false">Media superior</button>
-                            <button type="button" class="chip" data-v="sup" aria-pressed="false">Nivel superior</button>
-                            <button type="button" class="chip" data-v="adm" aria-pressed="false">ETS y admisión</button>
-                        </div>
-                        <div class="flex items-center justify-center gap-4 text-xs text-slateText">
+                        <div class="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-slateText">
                             <span id="cat-count" role="status" aria-live="polite"></span>
+                            <button type="button" id="exp-todo" class="text-cyanAccent font-bold uppercase tracking-wider hover:underline">Expandir todo</button>
+                            <button type="button" id="col-todo" class="text-cyanAccent font-bold uppercase tracking-wider hover:underline">Contraer todo</button>
                             <a href="#arma-tu-curso" class="text-goldLight font-bold hover:underline"><i class="fa-solid fa-basket-shopping mr-1" aria-hidden="true"></i>Mi selección: <strong id="sel-count">0</strong></a>
                         </div>
                     </div>
 
-                    <div id="cat-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+                    <div id="cat-grid" class="space-y-3"></div>
 
                     <p class="text-center text-xs text-slateText max-w-2xl mx-auto leading-relaxed">Los cursos de 10 a 16 horas son intensivos con el material completo. Las rutas de 18 horas o más se llevan individual, por sesiones. ¿No ves tu tema? Escríbeme y lo armamos.</p>
                 </div>
@@ -773,6 +780,21 @@
             </div>
         </section>
     </main>
+
+    <!-- BARRA DE SELECCIÓN (visible en cuanto eliges un curso) -->
+    <div id="sel-bar" hidden class="fixed inset-x-0 bottom-0 z-50 px-3 pb-3 sm:px-6 sm:pb-4 pointer-events-none">
+        <div class="pointer-events-auto max-w-3xl mx-auto bg-brandCard/95 backdrop-blur border border-goldAccent/50 rounded-2xl shadow-2xl p-3 flex flex-wrap items-center gap-3">
+            <div class="flex-1 min-w-[10rem]">
+                <p id="bar-resumen" class="text-sm font-bold text-white"></p>
+                <p id="bar-sub" class="text-xs text-slateText"></p>
+            </div>
+            <a href="#arma-tu-curso" class="px-4 py-2.5 rounded-lg border border-cyanAccent/40 hover:border-cyanAccent text-cyanAccent text-xs font-bold uppercase tracking-wider transition-colors">Revisar</a>
+            <button id="bar-send" type="button" class="px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-2">
+                <i class="fa-brands fa-whatsapp text-base" aria-hidden="true"></i><span>Enviar por WhatsApp</span>
+            </button>
+        </div>
+    </div>
+    <div id="toast" role="status" aria-live="polite" hidden></div>
 
     <!-- FOOTER -->
     <footer class="border-t border-brandBorder bg-brandDark py-12 px-4 sm:px-6 lg:px-8 text-xs text-slateText">
@@ -1117,7 +1139,9 @@
            ================================================================= */
         const CAT = CATALOGO.map((c, i) => Object.assign({ id: 'c' + i }, c));
         const seleccion = new Set();
-        const filtro = { m: 'todas', n: 'todos' };
+        const filtro = { m: 'todas' };
+        const gruposAbiertos = new Set(['adm']);   // grupos desplegados al cargar
+        const cursosAbiertos = new Set();
 
         function precioCurso(c) {
             if (c.precio) return c.precio;
@@ -1125,369 +1149,23 @@
             return PRECIOS_INTENSIVO[c.horas] || null;
         }
 
-        function renderCatalogo() {
-            const lista = CAT.filter(c => (filtro.m === 'todas' || c.m === filtro.m) && (filtro.n === 'todos' || c.n === filtro.n));
-            $('#cat-count').textContent = lista.length + (lista.length === 1 ? ' curso' : ' cursos');
-            $('#cat-grid').innerHTML = lista.length ? lista.map(c => {
-                const p = precioCurso(c);
-                const ruta = c.horas >= 18;
-                const fis = c.m === 'fis';
-                return `
-                <article class="price-card p-5 rounded-2xl flex flex-col gap-3">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <span class="text-[10px] font-bold uppercase tracking-widest ${fis ? 'text-cyanAccent' : 'text-goldLight'}">${esc(MATERIAS[c.m])}</span>
-                        <span class="text-[10px] font-bold uppercase tracking-widest text-slateText">· ${esc(NIVELES[c.n])}</span>
-                    </div>
-                    <h4 class="text-lg font-heading font-bold text-white leading-snug">${esc(c.nombre)}</h4>
-                    <p class="text-xs text-slateText"><i class="fa-regular fa-clock mr-1 text-cyanAccent" aria-hidden="true"></i>${c.horas} horas · ${ruta ? 'Ruta completa (individual)' : 'Intensivo con material completo'}</p>
-                    <div>
-                        ${p ? `<span class="text-3xl font-heading font-extrabold text-white">$${fmt(p)}</span> <span class="text-xs text-slateText">MXN</span>
-                        <p class="text-xs text-goldLight font-semibold mt-1">≈ $${fmt(Math.round(p / c.horas))} por hora</p>`
-                            : `<span class="text-2xl font-heading font-extrabold text-white">Cotizar</span>`}
-                    </div>
-                    <details class="text-sm">
-                        <summary class="cursor-pointer text-cyanAccent text-xs font-bold uppercase tracking-wider">Ver temas</summary>
-                        <ul class="mt-2 space-y-1 text-gray-200">${(c.temas || []).map(t => `<li class="flex items-start gap-2"><i class="fa-solid fa-angle-right text-cyanAccent mt-1 text-xs" aria-hidden="true"></i><span>${esc(t)}</span></li>`).join('')}</ul>
-                    </details>
-                    <div class="mt-auto pt-2 flex gap-2">
-                        <button type="button" data-add="${c.id}" aria-pressed="false" class="flex-1 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"></button>
-                        <a href="${waLink('Hola, me interesa el curso: ' + c.nombre + ' (' + c.horas + ' h)')}" target="_blank" rel="noopener noreferrer" aria-label="Preguntar por ${esc(c.nombre)} en WhatsApp" class="px-3.5 py-2.5 rounded-lg border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 transition-colors"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i></a>
-                    </div>
-                </article>`;
-            }).join('') : '<p class="col-span-full text-center text-sm text-slateText">No hay cursos con ese filtro todavía. Escríbeme y lo armamos a tu medida.</p>';
-            syncSeleccion();
-        }
-
-        function syncSeleccion() {
-            document.querySelectorAll('[data-add]').forEach(b => {
-                const on = seleccion.has(b.dataset.add);
-                b.setAttribute('aria-pressed', on ? 'true' : 'false');
-                b.className = 'flex-1 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ' + (on
-                    ? 'bg-goldAccent text-white hover:bg-amber-600'
-                    : 'bg-brandDark border border-goldAccent/30 hover:border-goldLight text-goldLight');
-                b.innerHTML = on ? '<i class="fa-solid fa-check mr-1" aria-hidden="true"></i>En mi curso' : '<i class="fa-solid fa-plus mr-1" aria-hidden="true"></i>Agregar';
-            });
-            $('#sel-count').textContent = seleccion.size;
-            const items = CAT.filter(c => seleccion.has(c.id));
-            $('#sel-list').innerHTML = items.length ? items.map(c => `
-                <div class="flex items-center justify-between gap-3 bg-brandDark/70 border border-brandBorder rounded-xl px-4 py-3">
-                    <div class="min-w-0">
-                        <p class="text-sm font-bold text-white truncate">${esc(c.nombre)}</p>
-                        <p class="text-xs text-slateText">${esc(MATERIAS[c.m])} · ${c.horas} h${precioCurso(c) ? ' · $' + fmt(precioCurso(c)) : ''}</p>
-                    </div>
-                    <button type="button" data-rm="${c.id}" aria-label="Quitar ${esc(c.nombre)}" class="shrink-0 w-8 h-8 rounded-full border border-brandBorder hover:border-rose-400 text-slateText hover:text-rose-400 transition-colors"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
-                </div>`).join('') : '<p class="text-sm text-slateText">Aún no eliges cursos. Agrega los que quieras del catálogo, o marca solo el material que necesitas.</p>';
-            const horas = items.reduce((s, c) => s + c.horas, 0);
-            const suma = items.reduce((s, c) => s + (precioCurso(c) || 0), 0);
-            $('#sel-total').innerHTML = items.length
-                ? `Total: <strong class="text-white">${horas} horas</strong> · Suma de referencia: <strong class="text-goldLight">$${fmt(suma)} MXN</strong>`
-                : '';
-            actualizarMensaje();
-        }
-
-        function construirMensaje() {
-            const items = CAT.filter(c => seleccion.has(c.id));
-            const mats = [...document.querySelectorAll('#mat-list input:checked')].map(i => i.value);
-            const val = id => $(id).value.trim();
-            const mod = (document.querySelector('input[name="mod"]:checked') || {}).value || '';
-            const fmtoSel = (document.querySelector('input[name="fmt"]:checked') || {}).value || '';
-            const materias = [...new Set(items.map(c => MATERIAS[c.m]))];
-            const L = ['¡Hola! Me interesan los cursos 👋', '', '*Quiero armar mi curso:*'];
-            if (items.length) {
-                L.push('*Materia:* ' + materias.join(' y '));
-                L.push('*Cursos elegidos:*');
-                items.forEach(c => L.push('• ' + c.nombre + ' (' + c.horas + ' h)' + (precioCurso(c) ? ' — $' + fmt(precioCurso(c)) : '')));
-                const horas = items.reduce((s, c) => s + c.horas, 0);
-                const suma = items.reduce((s, c) => s + (precioCurso(c) || 0), 0);
-                L.push('*Total de horas:* ' + horas + ' h');
-                L.push('*Suma de referencia:* $' + fmt(suma) + ' MXN');
-            } else {
-                L.push('*Cursos elegidos:* ninguno por ahora');
-            }
-            if (mats.length) { L.push('*Material que me interesa:*'); mats.forEach(m => L.push('• ' + m)); }
-            L.push('*Modalidad:* ' + mod);
-            L.push('*Formato:* ' + fmtoSel);
-            if (val('#b-temas')) L.push('*Temas o dudas:* ' + val('#b-temas'));
-            if (val('#b-nombre')) L.push('*Nombre:* ' + val('#b-nombre'));
-            if (val('#b-grado')) L.push('*Grado y escuela:* ' + val('#b-grado'));
-            if (val('#b-horario')) L.push('*Horario que me conviene:* ' + val('#b-horario'));
-            L.push('', 'Enviado desde la página de Asesorías Izazaga.');
-            return L.join('\n');
-        }
-
-        function actualizarMensaje() { $('#msg-preview').value = construirMensaje(); }
-
-        function setEstadoEnvio(msg, tipo) {
-            const el = $('#send-status');
-            el.textContent = msg || '';
-            el.className = 'text-sm min-h-[1.25rem] ' + (tipo === 'error' ? 'text-rose-400' : tipo === 'ok' ? 'text-emerald-400' : 'text-slateText');
-        }
-
-        async function copiarTexto(texto) {
-            try {
-                if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(texto); return true; }
-            } catch (e) { /* se prueba el método alterno */ }
-            try {
-                const ta = $('#msg-preview');
-                ta.removeAttribute('readonly');
-                ta.focus(); ta.select(); ta.setSelectionRange(0, 99999);
-                const ok = document.execCommand('copy');
-                ta.setAttribute('readonly', '');
-                return ok;
-            } catch (e) { return false; }
-        }
-
-        function hayAlgoQueEnviar() {
-            return seleccion.size > 0 || document.querySelector('#mat-list input:checked');
-        }
-
-        function initCatalogo() {
-            $('#mat-list').innerHTML = MATERIAL_SUELTO.map(m => `<label class="mat"><input type="checkbox" value="${esc(m)}"> ${esc(m)}</label>`).join('');
-
-            const filtros = [['#f-materia', 'm'], ['#f-nivel', 'n']];
-            filtros.forEach(([sel, key]) => {
-                $(sel).addEventListener('click', e => {
-                    const b = e.target.closest('button[data-v]');
-                    if (!b) return;
-                    filtro[key] = b.dataset.v;
-                    $(sel).querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
-                    renderCatalogo();
-                });
-            });
-
-            $('#cat-grid').addEventListener('click', e => {
-                const b = e.target.closest('[data-add]');
-                if (!b) return;
-                const id = b.dataset.add;
-                if (seleccion.has(id)) seleccion.delete(id); else seleccion.add(id);
-                syncSeleccion();
-            });
-            $('#sel-list').addEventListener('click', e => {
-                const b = e.target.closest('[data-rm]');
-                if (!b) return;
-                seleccion.delete(b.dataset.rm);
-                syncSeleccion();
-            });
-            ['#arma-tu-curso'].forEach(s => {
-                $(s).addEventListener('input', actualizarMensaje);
-                $(s).addEventListener('change', actualizarMensaje);
-            });
-
-            $('#btn-copy').addEventListener('click', async () => {
-                const ok = await copiarTexto(construirMensaje());
-                setEstadoEnvio(ok ? 'Mensaje copiado. Pégalo en tu chat de WhatsApp.' : 'No pude copiarlo solo: selecciona el texto de arriba y cópialo.', ok ? 'ok' : 'error');
-            });
-
-            $('#btn-send').addEventListener('click', async () => {
-                if (!hayAlgoQueEnviar()) { setEstadoEnvio('Agrega al menos un curso o marca el material que buscas.', 'error'); return; }
-                const texto = construirMensaje();
-                if (WA_NUMERO) {
-                    abrirWhatsApp(waLink(texto));
-                    setEstadoEnvio('Abriendo WhatsApp con tu mensaje…', 'ok');
-                    return;
-                }
-                const copiando = copiarTexto(texto);   // se inicia dentro del toque para que el navegador lo permita
-                abrirWhatsApp(WA);
-                const ok = await copiando;
-                setEstadoEnvio(ok ? 'Mensaje copiado. En WhatsApp, pégalo en el chat y envíalo.' : 'Se abrió WhatsApp. Copia el mensaje de arriba y pégalo en el chat.', ok ? 'ok' : 'error');
-            });
-
-            renderCatalogo();
-        }
-
-        // El triángulo se inclina suavemente con el cursor (solo con mouse y sin "reducir movimiento")
-        function initTilt() {
-            const c = $('#sierp-canvas');
-            if (!c || !window.matchMedia) return;
-            if (!window.matchMedia('(pointer: fine)').matches || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-            const hero = c.parentElement;
-            let raf = 0;
-            hero.addEventListener('pointermove', e => {
-                if (raf) return;
-                raf = requestAnimationFrame(() => {
-                    raf = 0;
-                    const r = hero.getBoundingClientRect();
-                    const nx = (e.clientX - r.left) / r.width - 0.5;
-                    const ny = (e.clientY - r.top) / r.height - 0.5;
-                    c.style.transform = 'rotate(' + (nx * 5).toFixed(2) + 'deg) translate(' + (nx * -14).toFixed(1) + 'px,' + (ny * -10).toFixed(1) + 'px)';
-                });
-            });
-            hero.addEventListener('pointerleave', () => { c.style.transform = ''; });
-        }
-
-        const TITLE_HOME = document.title;
-        function route() {
-            const hash = location.hash;
-            const portal = hash === '#alumno';
-            $('#view-home').hidden = portal;
-            $('#view-portal').hidden = !portal;
-            if (portal) {
-                document.title = 'Portal de Alumnos | Asesorías Izazaga';
-                window.scrollTo(0, 0);
-            } else {
-                document.title = TITLE_HOME;
-                sierp.restart();
-                if (hash.length > 1) {
-                    const el = document.getElementById(hash.slice(1));
-                    if (el) requestAnimationFrame(() => el.scrollIntoView());
-                } else {
-                    window.scrollTo(0, 0);
-                }
-            }
-        }
-
-        /* =================================================================
-           PORTAL DE ALUMNOS
-           ================================================================= */
-        const FOLIO_RE = /^[A-Z0-9-]{4,24}$/;
-
-        function setStatus(msg, kind) {
-            const el = $('#folio-status');
-            el.textContent = msg || '';
-            el.className = 'text-sm min-h-[1.25rem] ' + (kind === 'error' ? 'text-rose-400' : kind === 'ok' ? 'text-emerald-400' : 'text-slateText');
-        }
-        function setLoading(on) {
-            const btn = $('#folio-btn');
-            btn.disabled = on;
-            btn.classList.toggle('opacity-70', on);
-            $('#folio-btn-text').textContent = on ? 'Buscando…' : 'Buscar';
-            const icon = btn.querySelector('i, .spinner');
-            if (on) { icon.outerHTML = '<span class="spinner" aria-hidden="true"></span>'; }
-            else { const sp = btn.querySelector('.spinner'); if (sp) sp.outerHTML = '<i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>'; }
-        }
-
-        async function buscarFolio(folio) {
-            if (!API_URL) {
-                await new Promise(r => setTimeout(r, 400));
-                const a = DEMO_ALUMNOS[folio];
-                return a ? { ok: true, alumno: a } : { ok: false, error: 'not_found' };
-            }
-            const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), 20000);
-            try {
-                const res = await fetch(API_URL + (API_URL.includes('?') ? '&' : '?') + 'folio=' + encodeURIComponent(folio), { signal: ctrl.signal });
-                if (!res.ok) throw new Error('http ' + res.status);
-                return await res.json();
-            } finally {
-                clearTimeout(timer);
-            }
-        }
-
-        function fechaBonita(v) {
-            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
-            if (!m) return v ? String(v) : '';
-            return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
-        }
-        function linkBtn(v, label, icon, cls) {
-            if (!v) return '';
-            if (v === 'demo') return `<a href="#" data-demo="${esc(label)}" class="${cls}"><i class="${icon}" aria-hidden="true"></i> ${esc(label)}</a>`;
-            if (!/^https:\/\//i.test(v)) return '';
-            return `<a href="${esc(v)}" target="_blank" rel="noopener noreferrer" class="${cls}"><i class="${icon}" aria-hidden="true"></i> ${esc(label)}</a>`;
-        }
-
-        function renderAlumno(a) {
-            const cursos = Array.isArray(a.cursos) ? a.cursos : [];
-            const total = cursos.reduce((s, c) => s + (Number(c.horas) || 0), 0);
-            const btnGold = 'px-4 py-2.5 rounded-lg bg-goldAccent hover:bg-amber-600 text-white text-xs font-bold uppercase tracking-wider transition-colors inline-flex items-center gap-2';
-            const btnLine = 'px-4 py-2.5 rounded-lg border border-cyanAccent/40 hover:border-cyanAccent text-cyanAccent text-xs font-bold uppercase tracking-wider transition-colors inline-flex items-center gap-2';
-            $('#folio-result').innerHTML = `
-                <div class="bg-gradient-to-br from-brandCard to-brandBorder border border-cyanAccent/40 rounded-2xl p-6 space-y-6">
-                    <div>
-                        <p class="text-xs font-bold uppercase tracking-widest text-cyanAccent">Alumno</p>
-                        <h2 class="text-2xl sm:text-3xl font-heading font-bold text-white mt-1">${esc(a.nombre)}</h2>
-                        <p class="text-xs text-slateText mt-1">Folio <span class="font-semibold text-gray-200 tracking-wider">${esc(a.folio)}</span></p>
-                    </div>
-                    <div class="space-y-4">
-                        <h3 class="text-sm font-bold uppercase tracking-wider text-goldLight">Cursos tomados (${cursos.length})${total ? ' · ' + total + ' h en total' : ''}</h3>
-                        ${cursos.length ? cursos.map(c => {
-                            const acciones = [
-                                linkBtn(c.constancia, 'Descargar constancia', 'fa-solid fa-file-arrow-down', btnGold),
-                                linkBtn(c.grabaciones, 'Grabaciones', 'fa-solid fa-circle-play', btnLine),
-                                linkBtn(c.material, 'Material', 'fa-solid fa-folder-open', btnLine)
-                            ].join('');
-                            return `
-                            <div class="bg-brandDark/70 border border-brandBorder rounded-xl p-4 space-y-3">
-                                <div>
-                                    <h4 class="text-base font-heading font-bold text-white">${esc(c.nombre)}</h4>
-                                    <p class="text-xs text-slateText mt-1">
-                                        ${c.horas ? `<i class="fa-regular fa-clock mr-1 text-cyanAccent" aria-hidden="true"></i>${esc(c.horas)} h` : ''}
-                                        ${c.horas && c.fecha ? ' · ' : ''}
-                                        ${c.fecha ? `<i class="fa-regular fa-calendar mr-1 text-cyanAccent" aria-hidden="true"></i>${esc(fechaBonita(c.fecha))}` : ''}
-                                    </p>
-                                </div>
-                                ${acciones
-                                    ? `<div class="flex flex-wrap gap-2">${acciones}</div>`
-                                    : `<p class="text-xs text-slateText"><i class="fa-regular fa-hourglass-half mr-1" aria-hidden="true"></i>Tu constancia aún no está disponible. Escríbeme por WhatsApp si la necesitas.</p>`}
-                            </div>`;
-                        }).join('') : `<p class="text-sm text-slateText">Todavía no hay cursos registrados con este folio.</p>`}
-                    </div>
-                </div>`;
-        }
-
-        function initPortal() {
-            if (!API_URL) $('#demo-hint').hidden = false;
-
-            $('#folio-form').addEventListener('submit', async e => {
-                e.preventDefault();
-                const folio = $('#folio-input').value.trim().toUpperCase();
-                $('#folio-result').innerHTML = '';
-                if (!FOLIO_RE.test(folio)) { setStatus('Escribe tu folio completo (letras, números y guiones).', 'error'); return; }
-                setStatus('');
-                setLoading(true);
-                try {
-                    const data = await buscarFolio(folio);
-                    if (data && data.ok && data.alumno) {
-                        setStatus('Folio encontrado.', 'ok');
-                        renderAlumno(data.alumno);
-                    } else if (data && data.error === 'busy') {
-                        setStatus('Hay muchas consultas en este momento. Intenta de nuevo en un minuto.', 'error');
-                    } else {
-                        setStatus('No encontramos ese folio. Revísalo o escríbeme por WhatsApp.', 'error');
-                    }
-                } catch (err) {
-                    setStatus('No pudimos consultar tu folio ahora. Revisa tu conexión e intenta de nuevo.', 'error');
-                } finally {
-                    setLoading(false);
-                }
-            });
-
-            // Botones de demostración
-            $('#folio-result').addEventListener('click', e => {
-                const a = e.target.closest('a[data-demo]');
-                if (!a) return;
-                e.preventDefault();
-                setStatus('Demostración: aquí se abriría «' + a.dataset.demo + '» con el enlace real de tu hoja.', 'ok');
-            });
-        }
-
-        /* =================================================================
-           ARRANQUE
-           ================================================================= */
-        document.addEventListener('DOMContentLoaded', () => {
-            buildLogos();
-            renderTarifas('linea');
-            initCatalogo();
-            renderSchedule();
-            initMenu();
-            fillMenuPrices();
-            initTilt();
-            initPortal();
-            document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => renderTarifas(b.dataset.tab)));
-            $('#sierp-redo').addEventListener('click', () => sierp.restart());
-
-            window.addEventListener('hashchange', route);
-            route();
-
-            // Animaciones de entrada al hacer scroll
-            const els = document.querySelectorAll('#view-home section h2, #view-home .card-hover, #oferta .rounded-2xl, #ubicacion .rounded-2xl');
-            if (!('IntersectionObserver' in window)) return;
-            const io = new IntersectionObserver(es => es.forEach(e => {
-                if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
-            }), { threshold: 0.12 });
-            els.forEach(el => { el.classList.add('reveal'); io.observe(el); });
-            setTimeout(() => els.forEach(el => el.classList.add('in')), 2500);
-        });
-    </script>
-
-</body>
-</html>
+        function filaCurso(c) {
+            const p = precioCurso(c);
+            const ruta = c.horas >= 18;
+            const ab = cursosAbiertos.has(c.id);
+            return `
+            <div class="border-t border-brandBorder/70 first:border-t-0">
+                <div class="flex items-center gap-2 py-2.5">
+                    <button type="button" data-toggle-curso="${c.id}" aria-expanded="${ab}" aria-controls="p-${c.id}" class="flex-1 min-w-0 flex items-center gap-3 text-left rounded-lg px-1.5 py-1 hover:bg-white/5">
+                        <i class="fa-solid fa-chevron-right text-[10px] text-cyanAccent chev-t ${ab ? 'rot-90' : ''}" aria-hidden="true"></i>
+                        <span class="min-w-0">
+                            <span class="block text-sm font-bold text-white leading-snug">${esc(c.nombre)}</span>
+                            <span class="block text-xs text-slateText">${esc(MATERIAS[c.m])} · ${c.horas} h · ${p ? '<span class="text-goldLight font-semibold">$' + fmt(p) + '</span>' : 'Cotizar'}</span>
+                        </span>
+                    </button>
+                    <button type="button" data-add="${c.id}" aria-pressed="false"></button>
+                </div>
+                <div id="p-${c.id}" ${ab ? '' : 'hidden'} class="pb-3 pl-7 pr-1 space-y-3">
+                    <p class="text-xs text-slateText"><i class="fa-regular fa-clock mr-1 text-cyanAccent" aria-hidden="true"></i>${ruta ? 'Ruta completa, individual y por sesiones' : 'Intensivo con el material completo'}${p ? ' · ≈ $' + fmt(Math.round(p / c.horas)) + ' por hora' : ''}</p>
+                    <ul class="space-y-1 text-sm text-gray-200">${(c.temas || []).map(t => `<li class="flex items-start gap-2"><i class="fa-solid fa-angle-right text-cyanAccent mt-1 text-xs" aria-hidden="true"></i><span>${esc(t)}</span></li>`).join('')}</ul>
+                    <button type="button" data-ask="${c.id}" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 text-xs font-bold uppercase tracking-wider transition-colors"><i class="fa-brands fa-wha
